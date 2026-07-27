@@ -25,3 +25,17 @@ Right now the ingestion pipeline only pulls a candidate's profile data from thei
 - **Clear acceptance criteria:** the issue names the exact files to touch (`ingestion/parsers/`, `ingestion/pipeline.py`, `api/schemas/profile.py`), which matches the estimated 5–8 hour effort.
 - **Follows an existing pattern:** `ResumeParser`/`ReadmeParser` + `IngestionPipeline.ingest_resume`/`ingest_readme` are direct templates to mirror, so the unknowns are mostly in the new part (fetching an arbitrary user-supplied URL safely) rather than in the whole pipeline shape.
 - **New risk worth flagging early:** unlike the other sources, this one fetches a URL the user supplies, so SSRF protection (blocking internal/private addresses, restricting redirects) needs to be part of the implementation, not an afterthought.
+
+## Week 8 — Reproduction & solution planning
+
+**Reproduction commit link:** https://github.com/NadaFeteiha/pathreview/commit/7f7b868
+
+**Reproduction summary:**
+Since this issue describes a missing feature rather than a crash, I reproduced it by inspecting `main` along both paths a portfolio URL could take. I confirmed `ingestion/pipeline.py` has no `ingest_portfolio` method and `ingestion/parsers/` has no web/HTML parser, and that `api/routes/profiles.py` stores `portfolio_url` but never reads it back to fetch anything. I also found that `core/services/review_service.py::_run_ingestion_pipeline` references `profile.portfolio_url`, but only inside an explicit `# Placeholder: actual portfolio ingestion logic` block that fabricates a string instead of fetching real content. Full trail in `docs/issue-11-repro.md`.
+
+**PLAN.md link:** https://github.com/NadaFeteiha/pathreview/blob/11-portfolio-url-ingestion/PLAN.md
+
+**Walkthrough video (recommended):** Not recorded.
+
+**Blockers or open questions:**
+`core/services/review_service.py` has a review-generation-time placeholder for portfolio (and github/resume) data that this fix does not touch — see the Risks section in PLAN.md. Worth confirming with a mentor whether that's tracked as a separate issue or expected to be addressed later, since without it the ingested portfolio content isn't yet surfaced end-to-end in a generated review.
