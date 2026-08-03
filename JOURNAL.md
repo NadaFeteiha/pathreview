@@ -39,3 +39,35 @@ Since this issue describes a missing feature rather than a crash, I reproduced i
 
 **Blockers or open questions:**
 `core/services/review_service.py` has a review-generation-time placeholder for portfolio (and github/resume) data that this fix does not touch — see the Risks section in PLAN.md. Worth confirming with a mentor whether that's tracked as a separate issue or expected to be addressed later, since without it the ingested portfolio content isn't yet surfaced end-to-end in a generated review.
+
+## Week 9 — Solution building & PR submission
+
+### Check-in 1 (mid-week)
+
+**Current progress:**
+All 5 sub-tasks from PLAN.md are implemented: `WebParser` with SSRF-guarded `fetch_url` (including manual redirect re-validation), `IngestionPipeline.ingest_portfolio()` with metadata sanitization and stale-chunk cleanup, `portfolio_url` schema validation, the `BackgroundTasks` wiring in `api/routes/profiles.py` backed by a cached pipeline factory in `api/dependencies/ingestion.py`, and 31 unit tests across `test_web_parser.py` and `test_ingestion_pipeline.py`, all passing.
+
+**Next steps:**
+Run `make check`/`make test-unit` against `main` to establish a pre-existing-failure baseline, self-review the diff against `CONTRIBUTING.md` and the pre-submission checklist, rewrite the PR description to the repo's template, and finalize.
+
+**Blockers:**
+None blocking; the review_service.py placeholder noted in Week 8 remains an open question for a mentor, not a blocker for this PR's scope.
+
+---
+
+### Check-in 2 (end of week)
+
+**PR link:** https://github.com/ascherj/pathreview/pull/168
+
+**Branch:** `11-portfolio-url-ingestion` (see Notes for Reviewers on the PR for why this doesn't carry the `feat/` prefix required by `CONTRIBUTING.md` — GitHub doesn't support retargeting an open PR to a renamed branch, so the rename was reverted to avoid closing/reopening the PR)
+
+**What you built:**
+A `WebParser` that fetches a portfolio URL (with an SSRF guard covering redirects) and extracts clean bio/project text, plus an `IngestionPipeline.ingest_portfolio()` method that chunks, embeds, and stores that text in the vector store — triggered automatically in the background when a profile is created or updated with a `portfolio_url`.
+
+**Tests added or updated:**
+`tests/unit/test_web_parser.py` (20 tests: parsing, boilerplate stripping, metadata, SSRF guard, redirect handling) and `tests/unit/test_ingestion_pipeline.py` (11 tests: metadata sanitization, stale-chunk cleanup, ingest success/failure paths) — 31 total, all passing.
+
+**Self-review confirmation:** [x] make check passes  [x] make test-unit passes
+(Both checked under the documented pre-existing-failure carve-out: `main` already has 53 failing unit tests and repo-wide ruff/black/mypy failures unrelated to this change. On the 9 files this PR touches, ruff/black/mypy introduce 0 new errors — full breakdown in the PR's Notes for Reviewers.)
+
+**Draft PR feedback received from:** none
