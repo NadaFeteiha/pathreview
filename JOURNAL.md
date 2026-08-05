@@ -71,3 +71,34 @@ A `WebParser` that fetches a portfolio URL (with an SSRF guard covering redirect
 (Both checked under the documented pre-existing-failure carve-out: `main` already has 53 failing unit tests and repo-wide ruff/black/mypy failures unrelated to this change. On the 9 files this PR touches, ruff/black/mypy introduce 0 new errors — full breakdown in the PR's Notes for Reviewers.)
 
 **Draft PR feedback received from:** none
+
+## Week 10 — Iteration & reflection
+
+### Reviewer feedback
+
+**Feedback received:** [ ] Yes  [x] No — still awaiting review
+
+**Summary of feedback:**
+No reviews or comments have landed on PR #168 as of this entry (confirmed via `gh pr view 168 --json reviews,comments` — both empty). I shared it in the cohort Slack channel; nothing back yet.
+
+**How you responded:**
+N/A — nothing to respond to yet. If feedback comes in after this entry, I'll add a follow-up note rather than edit this section, so the record of what happened when stays honest.
+
+---
+
+### Reflection
+
+**What was harder than you expected?**
+Getting the ingestion logic itself right was the easy part — `ResumeParser`/`ReadmeParser` and `ingest_resume`/`ingest_readme` were direct templates, so the new parser and pipeline method almost wrote themselves. What actually took real effort was everything *around* the happy path. I shipped a first version of `fetch_url` with an SSRF guard that checked the URL's host before fetching — but I'd left `httpx`'s `follow_redirects=True` on, which meant a public URL could 302 straight into `169.254.169.254` and the guard would never see it. That only surfaced because I asked for a dedicated senior-engineer review pass after the "working" version was already committed. If I'd shipped that first version, I would have merged a security control that looked correct in every test I'd written but didn't actually hold under the one attack it existed to stop. The same review pass caught a second, non-security bug: I was writing `extracted_sections` (a list) and `title` (nullable) straight into chunk metadata, and ChromaDB only accepts scalar values — so the feature would have silently failed on every real ingestion despite all 20 of my original tests passing, because none of those tests exercised the actual vector-store write path.
+
+**What did you learn about working in a large codebase?**
+The most useful skill wasn't writing new code, it was reading old code carefully before touching anything. Confirming issue #11's scope meant diffing against `main` and grepping the *whole* codebase for `portfolio_url`, not just the three files the issue listed — that's how I found `core/services/review_service.py::_run_ingestion_pipeline`, a completely separate, review-generation-time code path that also references `portfolio_url` but only inside a hardcoded placeholder. It would have been easy to either miss it entirely or, worse, assume it was in scope and start "fixing" it, expanding a 5–8 hour issue into something much bigger. I also learned to distrust my own local `make check`/`make test-unit` runs until I'd established a baseline on `main` first — this repo has 53 pre-existing failing unit tests and 168 pre-existing ruff errors that have nothing to do with issue #11, and without checking `main` first I could easily have either panicked over failures I didn't cause or, worse, missed a real regression buried in the noise.
+
+**How did AI tools help — and where did they fall short?**
+AI was fastest at the mechanical parts: finding the exact sibling pattern to mirror (`ResumeParser`, `ingest_resume`), scaffolding a new parser and pipeline method consistently with house style, running `pytest`/`ruff`/`black` in a tight loop, and diffing against `main` to separate what I broke from what was already broken. Where it fell short was catching subtle correctness and security issues on the first pass — the redirect-based SSRF bypass and the ChromaDB list/`None` metadata bug both survived an initial "it works and the tests pass" implementation and only surfaced when I explicitly asked for an adversarial review rather than a "does this look done" pass. The lesson isn't "don't use AI for security-sensitive code," it's that a first implementation pass and a critical review pass are different modes and need to be asked for separately — treating the first green test run as the finish line would have shipped both bugs.
+
+**What would you do differently if you started over?**
+Two concrete things. First, I'd nail down the branch naming convention before opening the PR, not after — I renamed the branch mid-stream to match `CONTRIBUTING.md`, discovered GitHub can't retarget an open PR's head branch, and had to unwind the rename to avoid closing and reopening PR #168, which cost time and left a documented (but avoidable) deviation in the final PR. Second, I'd run the adversarial/security review pass as its own explicit step right after the first working version, instead of treating "tests pass" as a stopping point and only requesting a deeper review afterward — both real bugs I found came from that second pass, and they should be a standard step in my process, not something I ask for occasionally.
+
+**What are you most proud of from this module?**
+Not the feature working — catching the SSRF redirect bypass before it shipped. It's the kind of bug that passes every functional test, looks like exactly the right defense in the diff, and would only ever be found by someone deliberately trying to break it rather than confirm it works. Building the habit of asking "how would this fail against someone trying to abuse it" as a separate step from "does this do what I intended" feels like the most transferable thing I'm taking out of this module.
